@@ -1,0 +1,17 @@
+{
+  "features": [
+    "ROUNDS",
+    "SCORING",
+    "DRIVE_DISTANCE",
+    "FWY_%",
+    "GIR_%",
+    "SG_P",
+    "SG_TTG",
+    "POINTS",
+    "TOP 10",
+    "1ST"
+  ],
+  "log_resid_std": 0.17281438740799124,
+  "target_year": 2026,
+  "source_year": 2025
+}

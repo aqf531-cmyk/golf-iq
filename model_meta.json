@@ -1,0 +1,19 @@
+{
+  "features": [
+    "ROUNDS",
+    "SCORING",
+    "DRIVE_DISTANCE",
+    "FWY_%",
+    "GIR_%",
+    "SG_P",
+    "SG_TTG",
+    "POINTS",
+    "TOP 10",
+    "1ST"
+  ],
+  "log_resid_std": 0.037917777493236035,
+  "train_years": [
+    2023,
+    2024
+  ]
+}
