@@ -1,7 +1,10 @@
-streamlit
-altair
-pandas
-numpy
-xgboost
-scikit-learn
-scipy
+# Pinned 2026-09-20 on Python 3.12 (uv). Install: uv pip install -r requirements.txt
+# xgboost must stay >=3.2 — model.json / forecast_model.json are in 3.2.0 format.
+# macOS: xgboost needs the OpenMP runtime -> brew install libomp
+streamlit==1.64.0
+altair==6.3.0
+pandas==3.0.6
+numpy==2.5.3
+xgboost==3.4.1
+scikit-learn==1.9.1
+scipy==1.18.1
