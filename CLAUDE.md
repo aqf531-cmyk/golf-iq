@@ -1,7 +1,8 @@
 # Golf IQ
 
 Streamlit app that explores PGA Tour player history (2023–2025) and projects next-season
-earnings. Two Python files, three pre-trained estimators, one CSV. No tests yet.
+earnings. Two Python files, three pre-trained estimators, one CSV, plus a small SQLite
+visitor counter. No tests yet.
 
 ## Commands
 
@@ -18,7 +19,7 @@ source .venv/bin/activate
 streamlit run app.py
 
 # Headless smoke test of the backend (no UI)
-python -c "import golf_backend as be; print(be.forecast_next_season('Scottie Scheffler')); print(be.model_forecast('Scottie Scheffler'))"
+python -c "import golf_backend as be; print(be.forecast_next_season('Scottie Scheffler')); print(be.model_forecast('Scottie Scheffler')); print(be.visitor_stats())"
 ```
 
 Environment: Python 3.12 in `.venv/` (gitignored), deps pinned in `requirements.txt`.
@@ -33,6 +34,13 @@ Never use `/usr/bin/python3` — it's 3.9 with no packages. If `import xgboost` 
   module docstring; add new capabilities there first, then wire them into the UI.
 - Loaders (`_data`, `_whatif`, `_forecast_model`, `_persistence`) are `functools.lru_cache`d.
   Editing a data/model file on disk requires restarting Streamlit to take effect.
+- **Visitor counter** (`record_visit`, `record_player_view`, `visitor_stats`) writes to
+  `visitors.db` (SQLite, gitignored, created on first run). A "visit" = one Streamlit
+  browser session — `app.py` mints a `uuid4` into `st.session_state.visitor_id` and logs it
+  once; a page refresh is a new visit. Only session id, UTC timestamps, and player lookups
+  are stored — no IPs/user agents. `_visitor_db()` opens a fresh connection per call
+  (deliberately **not** cached). On hosts with an ephemeral filesystem (e.g. Streamlit
+  Community Cloud) the counter resets on redeploy.
 
 ### The three estimators (don't confuse them — the UI copy depends on this)
 
@@ -78,7 +86,10 @@ Never use `/usr/bin/python3` — it's 3.9 with no packages. If `import xgboost` 
 
 There is no test suite. After backend changes, run the headless smoke test above; after
 UI changes, run `streamlit run app.py` and click through all four tabs (Overview,
-Forecast, What-if, Compare) with at least one single-season player selected.
+Forecast, What-if, Compare) with at least one single-season player selected. Expand
+**👀 Site stats** in the sidebar and confirm "Visits" incremented. `streamlit.testing.v1.AppTest`
+works for driving `app.py` headlessly (`AppTest.from_file("app.py").run()`); delete the
+`visitors.db` it creates afterwards.
 
 ## Not yet in the repo (consider before adding features)
 

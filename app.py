@@ -6,6 +6,8 @@ Run locally:
     pip install -r requirements.txt
     streamlit run app.py
 """
+import uuid
+
 import altair as alt
 import numpy as np
 import pandas as pd
@@ -60,14 +62,44 @@ def big_card(label, value, sub=""):
 # Sidebar
 # ----------------------------------------------------------------------
 players = be.get_players()
+
+# One opaque id per browser session; logged once, then reused for player lookups.
+if "visitor_id" not in st.session_state:
+    st.session_state.visitor_id = uuid.uuid4().hex
+    be.record_visit(st.session_state.visitor_id)
+
 with st.sidebar:
     st.markdown("### ⛳ Golf IQ")
     st.caption("PGA Tour performance & earnings predictor")
     default_i = players.index("Scottie Scheffler") if "Scottie Scheffler" in players else 0
     player = st.selectbox("Choose a player", players, index=default_i)
+    if st.session_state.get("last_logged_player") != player:
+        be.record_player_view(st.session_state.visitor_id, player)
+        st.session_state.last_logged_player = player
     st.divider()
     st.caption("Built on an XGBoost model trained on 2023–2025 PGA Tour data. "
                "Predictions are estimates, not financial advice.")
+
+    with st.expander("👀 Site stats"):
+        vs = be.visitor_stats()
+        v1, v2 = st.columns(2)
+        v1.metric("Visits", f"{vs['total_visits']:,}")
+        v2.metric("Today", f"{vs['visits_today']:,}")
+        v3, v4 = st.columns(2)
+        v3.metric("Last 7 days", f"{vs['visits_7d']:,}")
+        v4.metric("This month", f"{vs['visits_this_month']:,}")
+        monthly = be.visits_by_month()
+        if len(monthly) > 1:
+            st.altair_chart(
+                alt.Chart(monthly).mark_bar(color=GREEN, cornerRadiusTopLeft=3,
+                                            cornerRadiusTopRight=3).encode(
+                    x=alt.X("Month:O", title=None),
+                    y=alt.Y("Visits:Q", title=None),
+                    tooltip=["Month", "Visits"]).properties(height=120),
+                use_container_width=True)
+        if vs["top_players"]:
+            st.caption("Most viewed: " + ", ".join(
+                f"{t['player']} ({t['sessions']})" for t in vs["top_players"]))
 
 # ----------------------------------------------------------------------
 # Hero

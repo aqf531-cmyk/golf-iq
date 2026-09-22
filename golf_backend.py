@@ -11,14 +11,21 @@ Public functions:
     forecast_next_season(name)         -> dict {expected, low, high, ...}
     model_forecast(name)              -> dict {point, low, high}  (stat-based, advanced)
     feature_fields()                   -> dict of slider config for the UI
+    record_visit(session_id)           -> log one visit (call once per browser session)
+    record_player_view(session_id, name) -> log a player lookup
+    visitor_stats()                    -> dict of visit counts + most-viewed players
+    visits_by_month()                  -> DataFrame [Month, Visits], one row per month
 """
 import json
 import functools
+import sqlite3
+from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 import xgboost as xgb
 
 DATA_FILE = "pgatour_2023_2025.csv"
+VISITOR_DB = "visitors.db"   # created on first run; gitignored
 
 # Slider/UI config: feature -> (friendly label, min, max, step)
 _FIELDS = {
@@ -129,3 +136,75 @@ def model_forecast(name):
         "low":  float(np.expm1(lp - Z80 * s)),
         "high": float(np.expm1(lp + Z80 * s)),
     }
+
+
+# ---------------------------------------------------------------- visitors
+# Lightweight, self-contained traffic counter. A "visit" is one Streamlit
+# browser session (a page refresh starts a new one). No IPs or user agents
+# are stored — only an opaque session id, timestamps, and player lookups.
+_VISITOR_SCHEMA = """
+CREATE TABLE IF NOT EXISTS visits (
+    session_id TEXT PRIMARY KEY,
+    started_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS player_views (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    player     TEXT NOT NULL,
+    viewed_at  TEXT NOT NULL
+);
+"""
+
+def _visitor_db():
+    con = sqlite3.connect(VISITOR_DB, timeout=5)
+    con.executescript(_VISITOR_SCHEMA)
+    return con
+
+def _utcnow():
+    return datetime.now(timezone.utc)
+
+def record_visit(session_id: str):
+    """Log a visit. Idempotent per session_id, so safe to call on every rerun."""
+    with _visitor_db() as con:
+        con.execute("INSERT OR IGNORE INTO visits VALUES (?, ?)",
+                    (session_id, _utcnow().isoformat()))
+
+def record_player_view(session_id: str, name: str):
+    """Log that a session looked at a player."""
+    with _visitor_db() as con:
+        con.execute("INSERT INTO player_views (session_id, player, viewed_at) VALUES (?, ?, ?)",
+                    (session_id, name, _utcnow().isoformat()))
+
+def visitor_stats(top_n: int = 3):
+    """Headline traffic numbers for the UI (all times UTC)."""
+    now = _utcnow()
+    today = now.strftime("%Y-%m-%d")
+    month = now.strftime("%Y-%m")
+    week_ago = (now - timedelta(days=7)).isoformat()
+    with _visitor_db() as con:
+        total = con.execute("SELECT COUNT(*) FROM visits").fetchone()[0]
+        today_n = con.execute("SELECT COUNT(*) FROM visits WHERE started_at LIKE ?",
+                              (today + "%",)).fetchone()[0]
+        week_n = con.execute("SELECT COUNT(*) FROM visits WHERE started_at >= ?",
+                             (week_ago,)).fetchone()[0]
+        month_n = con.execute("SELECT COUNT(*) FROM visits WHERE started_at LIKE ?",
+                              (month + "%",)).fetchone()[0]
+        top = con.execute(
+            "SELECT player, COUNT(DISTINCT session_id) AS n FROM player_views "
+            "GROUP BY player ORDER BY n DESC, player LIMIT ?", (top_n,)).fetchall()
+    return {
+        "total_visits": int(total),
+        "visits_today": int(today_n),
+        "visits_7d": int(week_n),
+        "visits_this_month": int(month_n),
+        "top_players": [{"player": str(p), "sessions": int(n)} for p, n in top],
+    }
+
+def visits_by_month():
+    """Visits per calendar month (UTC) as a DataFrame with columns Month ('YYYY-MM') and Visits."""
+    with _visitor_db() as con:
+        rows = con.execute(
+            "SELECT substr(started_at, 1, 7) AS month, COUNT(*) FROM visits "
+            "GROUP BY month ORDER BY month").fetchall()
+    return pd.DataFrame([{"Month": str(m), "Visits": int(n)} for m, n in rows],
+                        columns=["Month", "Visits"])
